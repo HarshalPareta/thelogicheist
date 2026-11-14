@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Logic Heist - Admin Panel</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <button class="close-admin" id="backBtn" style="position:static; margin-right:auto;">&larr; Back</button>
+  <h1>The Logic Heist &mdash; Admin</h1>
+</header>
+
+<div id="adminLock" class="screen active">
+  <div class="card auth-card">
+    <h2>Admin Access</h2>
+    <p class="sub">Enter the station master password</p>
+    <input type="password" id="passInput" placeholder="Password">
+    <button class="btn" id="passSubmit">Unlock</button>
+    <div id="passErr"></div>
+  </div>
+</div>
+
+<div id="adminPanel" class="screen hidden">
+  <div class="admin-wrap">
+    <div class="admin-header">
+      <div>
+        <h2>Live Team Tracking</h2>
+        <div style="font-size:0.85rem; color:var(--muted);">Station times &bull; Admin stop &bull; Excel export</div>
+      </div>
+      <div class="admin-actions">
+        <button class="btn" id="exportBtn">Export Excel</button>
+        <button class="btn stop" id="clearBtn" style="margin-left:8px;">Clear All Results</button>
+      </div>
+    </div>
+    <div id="adminTableWrap">
+      <table class="sheet" id="adminSheet">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Start</th>
+            <th>Curr.</th>
+            <th>Status</th>
+            <th>St 1</th>
+            <th>St 2</th>
+            <th>St 3</th>
+            <th>St 4</th>
+            <th>St 5</th>
+            <th>Total</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="adminSheetBody"></tbody>
+      </table>
+    </div>
+    <div id="adminEmpty" class="empty hidden">No active teams yet.</div>
+  </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const STATION_COUNT = 5;
+  const STATION_LIMIT_MS = 12 * 60 * 1000;
+  const TRANSITION_LIMIT_MS = 2 * 60 * 1000;
+  const ADMIN_PASSWORD = 'Harshal@148';
+
+  let teams = {};
+  let authed = false;
+  let socket = io();
+
+  const adminLock = document.getElementById('adminLock');
+  const adminPanel = document.getElementById('adminPanel');
+  const passInput = document.getElementById('passInput');
+  const passSubmit = document.getElementById('passSubmit');
+  const passErr = document.getElementById('passErr');
+
+  function fmt(ms) {
+    if (ms == null || ms < 0) return '--:--';
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  function stationKey(n) { return 's' + n; }
+
+  function unlock() {
+    adminLock.classList.remove('active');
+    adminLock.classList.add('hidden');
+    adminPanel.classList.remove('hidden');
+    adminPanel.classList.add('active');
+    authed = true;
+    socket.emit('admin:auth', { password: ADMIN_PASSWORD });
+    renderAdmin();
+  }
+
+  passSubmit.addEventListener('click', () => {
+    if (passInput.value === ADMIN_PASSWORD) {
+      unlock();
+    } else {
+      passErr.textContent = 'Incorrect password.';
+      passInput.value = '';
+      passInput.focus();
+    }
+  });
+  passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') passSubmit.click(); });
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  function renderAdmin() {
+    const wrap = document.getElementById('adminTableWrap');
+    const empty = document.getElementById('adminEmpty');
+    const body = document.getElementById('adminSheetBody');
+    const list = Object.values(teams);
+
+    if (list.length === 0) {
+      wrap.style.display = 'none';
+      empty.classList.remove('hidden');
+      return;
+    }
+    wrap.style.display = 'block';
+    empty.classList.add('hidden');
+    body.innerHTML = '';
+    list.forEach(team => {
+      const tr = document.createElement('tr');
+      const st = (n) => {
+        const d = team.stationTimes[stationKey(n)];
+        if (!d || d.duration == null) return '<span class="dash">--:--</span>';
+        return `<span class="time-cell">${fmt(d.duration)}</span>`;
+      };
+      let statusClass = 'wait', statusLabel = 'Idle';
+      if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
+      else if (team.status === 'transition') { statusClass = 'trans'; statusLabel = 'Transition'; }
+      else if (team.status === 'station_select') { statusClass = 'trans'; statusLabel = 'Selecting Station'; }
+      else if (team.status === 'finished') { statusClass = 'wait'; statusLabel = 'Finished'; }
+
+      let actionHtml = '';
+      if (team.status === 'active' && authed) {
+        actionHtml = `<button class="btn stop" onclick="appStop('${escapeHtml(team.name)}')">Stop</button>`;
+      } else if (team.status === 'transition' && authed) {
+        actionHtml = `<button class="btn stop" onclick="appSkip('${escapeHtml(team.name)}')">Skip Transition</button>`;
+      } else {
+        actionHtml = `<span class="dash">-</span>`;
+      }
+
+      tr.innerHTML = `
+        <td class="team">${escapeHtml(team.name)}</td>
+        <td>${team.startStation}</td>
+        <td>${team.currentStation}</td>
+        <td class="${statusClass}">${statusLabel}</td>
+        ${[1,2,3,4,5].map(n => `<td>${st(n)}</td>`).join('')}
+        <td class="time-cell">${fmt(team.totalTime)}</td>
+        <td>${actionHtml}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  window.appStop = function(teamName) {
+    if (!authed) return;
+    socket.emit('admin:stop', { name: teamName });
+  };
+
+  window.appSkip = function(teamName) {
+    if (!authed) return;
+    socket.emit('admin:skip_transition', { name: teamName });
+  };
+
+  window.appClear = function() {
+    if (!authed) return;
+    if (!confirm('WARNING: This will delete ALL team data and cannot be undone. Continue?')) return;
+    socket.emit('admin:clear');
+  };
+
+  function escapeHtml(t) {
+    const div = document.createElement('div');
+    div.textContent = t;
+    return div.innerHTML;
+  }
+
+  socket.on('state:init', (t) => { teams = t; renderAdmin(); });
+  socket.on('state:update', (t) => { teams = t; renderAdmin(); });
+  socket.on('admin:authed', (ok) => {
+    if (!ok) { passErr.textContent = 'Auth failed.'; }
+  });
+
+  // Excel export
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const list = Object.values(teams);
+    if (list.length === 0) { alert('No teams to export.'); return; }
+    const header = ['Team Name', 'Start Station', 'Current Station', 'Status',
+      'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Total Time'];
+    const rows = [header];
+    list.forEach(team => {
+      let statusLabel = team.status.charAt(0).toUpperCase() + team.status.slice(1);
+      const row = [team.name, team.startStation, team.currentStation, statusLabel];
+      for (let i = 1; i <= STATION_COUNT; i++) {
+        const d = team.stationTimes[stationKey(i)];
+        row.push(d && d.duration != null ? fmt(d.duration) : '--:--');
+      }
+      row.push(fmt(team.totalTime));
+      rows.push(row);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [20, 14, 14, 12, 11, 11, 11, 11, 11, 12].map(w => ({ width: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
+    XLSX.writeFile(wb, 'logic-heist-times.xlsx');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', appClear);
+</script>
+</body>
+</html>

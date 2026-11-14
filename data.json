@@ -1,0 +1,90 @@
+{
+  "p1": {
+    "name": "p1",
+    "startStation": 3,
+    "currentStation": 2,
+    "status": "finished",
+    "completedStations": [
+      3,
+      4,
+      1,
+      5,
+      2
+    ],
+    "stationTimes": {
+      "s1": {
+        "start": 1794656040649,
+        "end": 1794656071169,
+        "duration": 30520
+      },
+      "s2": {
+        "start": 1794656087386,
+        "end": 1794656089178,
+        "duration": 1792
+      },
+      "s3": {
+        "start": 1794655938673,
+        "end": 1794655967657,
+        "duration": 28984
+      },
+      "s4": {
+        "start": 1794655977088,
+        "end": 1794656023744,
+        "duration": 46656
+      },
+      "s5": {
+        "start": 1794656077642,
+        "end": 1794656080025,
+        "duration": 2383
+      }
+    },
+    "stationTimerStart": null,
+    "transitionStart": null,
+    "totalTime": 110335,
+    "updatedAt": 1794656090009
+  },
+  "p2": {
+    "name": "p2",
+    "startStation": 1,
+    "currentStation": 4,
+    "status": "finished",
+    "completedStations": [
+      1,
+      2,
+      5,
+      3,
+      4
+    ],
+    "stationTimes": {
+      "s1": {
+        "start": 1794655947032,
+        "end": 1794655980409,
+        "duration": 33377
+      },
+      "s2": {
+        "start": 1794655988215,
+        "end": 1794656055498,
+        "duration": 67283
+      },
+      "s3": {
+        "start": 1794656074922,
+        "end": 1794656080505,
+        "duration": 5583
+      },
+      "s4": {
+        "start": 1794656085209,
+        "end": 1794656090578,
+        "duration": 5369
+      },
+      "s5": {
+        "start": 1794656063457,
+        "end": 1794656069082,
+        "duration": 5625
+      }
+    },
+    "stationTimerStart": null,
+    "transitionStart": null,
+    "totalTime": 117237,
+    "updatedAt": 1794656091083
+  }
+}

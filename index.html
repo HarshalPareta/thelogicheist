@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Logic Heist - Timer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0a;
+    --panel: #121212;
+    --accent: #b22222;
+    --accent-dark: #8a1a1a;
+    --text: #f0f0f0;
+    --muted: #888;
+    --green: #2ecc71;
+    --red: #e74c3c;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 24px;
+    background: var(--panel);
+    border-bottom: 4px solid var(--accent);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  #daliMask {
+    width: 44px; height: 44px;
+    cursor: pointer;
+    filter: drop-shadow(0 0 6px rgba(178,34,34,0.4));
+    transition: transform 0.15s;
+  }
+  #daliMask:active { transform: scale(0.92); }
+  #daliMask.hint { animation: pulse 1.5s infinite; }
+  @keyframes pulse {
+    0% { filter: drop-shadow(0 0 6px rgba(178,34,34,0.4)); }
+    50% { filter: drop-shadow(0 0 14px rgba(178,34,34,0.8)); }
+    100% { filter: drop-shadow(0 0 6px rgba(178,34,34,0.4)); }
+  }
+  h1 {
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .screen { display: none; padding: 30px 20px; max-width: 700px; margin: 0 auto; }
+  .screen.active { display: block; }
+  .card {
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  h2 { color: var(--text); margin-bottom: 8px; font-size: 1.3rem; }
+  p.sub { color: var(--muted); margin-bottom: 22px; font-size: 0.95rem; }
+  label { display: block; margin: 14px 0 6px; font-weight: 600; color: var(--text); text-align: left; }
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #0a0a0a;
+    color: var(--text);
+    font-size: 1rem;
+    margin-bottom: 10px;
+  }
+  input[type="text"]::placeholder { color: #555; }
+  .row { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 500px) { .row { grid-template-columns: 1fr 1fr; } }
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 6px;
+  }
+  .btn:hover { background: var(--accent-dark); }
+  .btn:active { transform: scale(0.97); }
+  .btn.secondary { background: #222; border: 1px solid #444; color: #ddd; }
+  .btn.secondary:hover { background: #333; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; background: #333; }
+  .station-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px; height: 56px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.4rem;
+    font-weight: 800;
+    margin: 0 auto 16px;
+    border: 3px solid #000;
+    box-shadow: 0 0 0 0 rgba(178,34,34,0.6);
+    animation: none;
+  }
+  .station-chip.transition { background: #1a1a1a; border-color: var(--muted); color: var(--muted); box-shadow: none; }
+  .timer-big {
+    font-size: 4rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    margin: 14px 0 6px;
+    text-shadow: 0 0 20px rgba(178,34,34,0.25);
+  }
+  .timer-label { color: var(--muted); font-size: 1rem; margin-bottom: 18px; }
+  .status-text { font-size: 1.05rem; color: var(--green); font-weight: 700; margin-bottom: 16px; }
+  .status-text.trans { color: #f1c40f; }
+  .status-text.wait { color: var(--muted); }
+
+  /* Admin */
+  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; }
+  .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid var(--accent); }
+  .admin-header h2 { margin: 0; }
+  .admin-actions { display: flex; gap: 10px; }
+  .sheet {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 0.88rem;
+  }
+  .sheet th {
+    background: var(--accent);
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.8rem;
+    padding: 12px 8px;
+    text-align: center;
+    border: 1px solid #000;
+  }
+  .sheet td { padding: 10px 8px; border: 1px solid #222; text-align: center; }
+  .sheet tr:nth-child(even) td { background: #171717; }
+  .sheet td.team { text-align: left; font-weight: 700; color: var(--accent); }
+  .sheet td.active { color: var(--green); font-weight: 700; }
+  .sheet td.trans { color: #f1c40f; font-weight: 700; }
+  .sheet td.wait { color: var(--muted); }
+  .sheet .time-cell { font-variant-numeric: tabular-nums; font-family: monospace; }
+  .sheet .dash { color: #444; }
+  .btn.stop { background: var(--red); }
+  .btn.stop:hover { background: #c0392b; }
+  .empty { text-align: center; color: var(--muted); padding: 30px; }
+  .close-admin { position: absolute; top: 16px; right: 20px; background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .modal {
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 32px 28px;
+    width: 340px;
+    text-align: center;
+  }
+  .modal h3 { margin-bottom: 8px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+  .modal p { color: var(--muted); margin-bottom: 20px; font-size: 0.9rem; }
+  .modal input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #0a0a0a; color: var(--text); text-align: center; font-size: 1rem; margin-bottom: 18px; }
+  .modal .btn-row { display: flex; gap: 10px; }
+  .modal .btn { flex: 1; }
+  .click-hint { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); font-size: 0.85rem; color: var(--muted); pointer-events: none; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg id="daliMask" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-label="Admin" title="Admin (click 5 times)">
+    <defs>
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>
+    <ellipse cx="50" cy="46" rx="30" ry="33" fill="#0a0a0a" stroke="var(--accent)" stroke-width="3" filter="url(#glow)"/>
+    <path d="M28 34 Q33 30 38 34 Q33 38 28 34" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M72 34 Q67 30 62 34 Q67 38 72 34" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M45 42 L50 48 L55 42" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M24 50 Q46 54 50 58 Q54 54 76 50" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M50 72 Q50 82 50 92" fill="none" stroke="var(--accent)" stroke-width="2" opacity="0.5"/>
+  </svg>
+  <h1>The Logic Heist</h1>
+</header>
+
+<div class="click-hint" id="clickHint">Admin panel - click mask 5 times</div>
+
+<!-- Landing / Team join -->
+<div id="landing" class="screen active">
+  <div class="card">
+    <h2>Join The Heist</h2>
+    <p class="sub">Pick your team and the station where you begin.</p>
+    <label>Team Name</label>
+    <input type="text" id="teamName" placeholder="e.g. Phantom Crew" maxlength="30">
+    <label>Starting Station (1-5)</label>
+    <select id="startStation">
+      <option value="1">Station 1</option>
+      <option value="2">Station 2</option>
+      <option value="3">Station 3</option>
+      <option value="4">Station 4</option>
+      <option value="5">Station 5</option>
+    </select>
+    <button class="btn" id="joinBtn">Enter The Heist</button>
+  </div>
+</div>
+
+<!-- Team dashboard -->
+<div id="teamView" class="screen">
+  <div class="card">
+    <h2>Station <span id="curStationLabel">1</span></h2>
+    <div id="stationChip" class="station-chip">1</div>
+    <div id="timerArea">
+      <div class="timer-big" id="timerDisplay">12:00</div>
+      <div class="timer-label" id="timerLabel">Time Remaining</div>
+      <div class="status-text" id="statusText">Ready to begin</div>
+    </div>
+    <button class="btn" id="startStationBtn">Start Station Timer</button>
+    <button class="btn secondary" id="leaveBtn">Leave / Change Team</button>
+    <div style="margin-top:14px; font-size:0.85rem; color:var(--muted);">
+      12 min puzzle limit &bull; 2 min transition after stop/complete
+    </div>
+  </div>
+</div>
+
+<!-- Admin panel -->
+<div id="adminView" class="screen">
+  <div class="admin-wrap">
+    <button class="close-admin" id="closeAdmin">&times;</button>
+    <div class="admin-header">
+      <div>
+        <h2>Admin Panel &mdash; The Logic Heist</h2>
+        <div style="font-size:0.85rem; color:var(--muted);">Live team tracking &bull; Station times</div>
+      </div>
+      <div class="admin-actions">
+        <button class="btn" id="exportBtn">Export Excel</button>
+      </div>
+    </div>
+    <div id="adminTableWrap">
+      <table class="sheet" id="adminSheet">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Start</th>
+            <th>Curr.</th>
+            <th>Status</th>
+            <th>St 1</th>
+            <th>St 2</th>
+            <th>St 3</th>
+            <th>St 4</th>
+            <th>St 5</th>
+            <th>Total</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="adminSheetBody"></tbody>
+      </table>
+    </div>
+    <div id="adminEmpty" class="empty hidden">No active teams yet.</div>
+  </div>
+</div>
+
+<!-- Password modal -->
+<div class="modal-overlay hidden" id="passModal">
+  <div class="modal">
+    <h3>Admin Access</h3>
+    <p>Enter the station master password</p>
+    <input type="password" id="passInput" placeholder="Password">
+    <div class="btn-row">
+      <button class="btn secondary" id="passCancel">Cancel</button>
+      <button class="btn" id="passSubmit">Unlock</button>
+    </div>
+    <div id="passErr" style="color:var(--red); font-size:0.85rem; margin-top:10px; height:1.2em;"></div>
+  </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script>
+  const STATION_COUNT = 5;
+  const STATION_LIMIT_MS = 12 * 60 * 1000;
+  const TRANSITION_LIMIT_MS = 2 * 60 * 1000;
+  const ADMIN_PASSWORD = 'Harshal@148';
+  const CLICKS_REQUIRED = 5;
+  const CLICK_WINDOW_MS = 3000;
+
+  let teams = {}; // name -> team
+  let currentTeamName = null;
+  let tickTimer = null;
+
+  // ---------- persistence ----------
+  function loadState() {
+    try {
+      const raw = localStorage.getItem('logicHeistTeams');
+      if (raw) teams = JSON.parse(raw);
+    } catch (e) { teams = {}; }
+  }
+  function saveState() {
+    localStorage.setItem('logicHeistTeams', JSON.stringify(teams));
+    if (tickTimer === null && Object.keys(teams).length > 0) startTick();
+  }
+
+  // ---------- time helpers ----------
+  function now() { return Date.now(); }
+  function fmt(ms) {
+    if (ms == null || ms < 0) return '--:--';
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  function stationKey(n) { return 's' + n; }
+
+  function makeTeam(name, startStation) {
+    const s = {};
+    for (let i = 1; i <= STATION_COUNT; i++) s[stationKey(i)] = { start: null, end: null, duration: null };
+    return {
+      name,
+      startStation: startStation,
+      currentStation: startStation,
+      status: 'idle', // idle | active | transition | finished
+      stationTimes: s,
+      stationTimerStart: null,
+      transitionStart: null,
+      totalTime: 0,
+      updatedAt: now()
+    };
+  }
+
+  // ---------- timer logic ----------
+  function startTick() {
+    if (tickTimer) return;
+    tickTimer = setInterval(() => {
+      render();
+      checkAuto();
+    }, 1000);
+  }
+  function stopTick() {
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+  }
+
+  function checkAuto() {
+    const t = now();
+    let changed = false;
+    Object.values(teams).forEach(team => {
+      if (team.status === 'active' && team.stationTimerStart) {
+        if (t - team.stationTimerStart >= STATION_LIMIT_MS) {
+          completeStation(team, t);
+          changed = true;
+        }
+      } else if (team.status === 'transition' && team.transitionStart) {
+        if (t - team.transitionStart >= TRANSITION_LIMIT_MS) {
+          advanceStation(team);
+          changed = true;
+        }
+      }
+    });
+    if (changed) saveState();
+  }
+
+  function completeStation(team, endTime) {
+    const cs = team.currentStation;
+    const start = team.stationTimerStart || endTime - STATION_LIMIT_MS;
+    const end = endTime;
+    const duration = end - start;
+    team.stationTimes[stationKey(cs)] = { start, end, duration };
+    team.totalTime += duration;
+    team.stationTimerStart = null;
+    team.status = 'transition';
+    team.transitionStart = end;
+    team.updatedAt = end;
+  }
+
+  function advanceStation(team) {
+    team.currentStation = (team.currentStation % STATION_COUNT) + 1;
+    team.status = 'idle';
+    team.transitionStart = null;
+    team.updatedAt = now();
+  }
+
+  function startStationTimer(team) {
+    if (team.status !== 'idle') return;
+    team.status = 'active';
+    team.stationTimerStart = now();
+    team.updatedAt = now();
+    saveState();
+    startTick();
+  }
+
+  function stopStationTimerByAdmin(team) {
+    if (team.status !== 'active') return false;
+    completeStation(team, now());
+    saveState();
+    return true;
+  }
+
+  function getDisplaySeconds(team) {
+    if (team.status === 'active' && team.stationTimerStart) {
+      const remaining = STATION_LIMIT_MS - (now() - team.stationTimerStart);
+      if (remaining <= 0) return '00:00';
+      return fmt(remaining);
+    }
+    if (team.status === 'transition' && team.transitionStart) {
+      const remaining = TRANSITION_LIMIT_MS - (now() - team.transitionStart);
+      if (remaining <= 0) return '00:00';
+      return fmt(remaining);
+    }
+    if (team.status === 'idle') return fmt(STATION_LIMIT_MS);
+    return '--:--';
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    const landing = document.getElementById('landing');
+    const teamView = document.getElementById('teamView');
+    const adminView = document.getElementById('adminView');
+
+    if (currentTeamName) {
+      landing.classList.remove('active');
+      teamView.classList.add('active');
+      adminView.classList.remove('active');
+      renderTeam(teams[currentTeamName]);
+    } else {
+      landing.classList.add('active');
+      teamView.classList.remove('active');
+      adminView.classList.remove('active');
+    }
+    renderAdmin();
+  }
+
+  function renderTeam(team) {
+    if (!team) return;
+    document.getElementById('curStationLabel').textContent = team.currentStation;
+    const chip = document.getElementById('stationChip');
+    chip.textContent = team.currentStation;
+    chip.className = 'station-chip' + (team.status === 'transition' ? ' transition' : '');
+
+    const timerArea = document.getElementById('timerArea');
+    const timerDisplay = document.getElementById('timerDisplay');
+    const timerLabel = document.getElementById('timerLabel');
+    const statusText = document.getElementById('statusText');
+    const startBtn = document.getElementById('startStationBtn');
+
+    if (team.status === 'idle') {
+      timerArea.style.display = 'none';
+      startBtn.style.display = 'block';
+      startBtn.textContent = 'Start Station Timer';
+      startBtn.disabled = false;
+      statusText.style.display = 'none';
+    } else if (team.status === 'active') {
+      timerArea.style.display = 'block';
+      startBtn.style.display = 'none';
+      statusText.style.display = 'none';
+      timerLabel.textContent = 'Time Remaining';
+      timerLabel.className = 'timer-label';
+      timerDisplay.textContent = getDisplaySeconds(team);
+    } else if (team.status === 'transition') {
+      timerArea.style.display = 'block';
+      startBtn.style.display = 'none';
+      statusText.style.display = 'none';
+      timerLabel.textContent = 'Transitioning to Station ' + team.currentStation;
+      timerLabel.className = 'timer-label';
+      timerDisplay.textContent = getDisplaySeconds(team);
+    }
+  }
+
+  function renderAdmin() {
+    const wrap = document.getElementById('adminTableWrap');
+    const empty = document.getElementById('adminEmpty');
+    const body = document.getElementById('adminSheetBody');
+    const list = Object.values(teams);
+
+    if (list.length === 0) {
+      wrap.style.display = 'none';
+      empty.classList.remove('hidden');
+      return;
+    }
+    wrap.style.display = 'block';
+    empty.classList.add('hidden');
+    body.innerHTML = '';
+    list.forEach(team => {
+      const tr = document.createElement('tr');
+      const st = (n) => {
+        const d = team.stationTimes[stationKey(n)];
+        if (!d || d.duration == null) return '<span class="dash">--:--</span>';
+        return `<span class="time-cell">${fmt(d.duration)}</span>`;
+      };
+      let statusClass = 'wait', statusLabel = 'Idle';
+      if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
+      else if (team.status === 'transition') { statusClass = 'trans'; statusLabel = 'Transition'; }
+      else if (team.status === 'finished') { statusClass = 'wait'; statusLabel = 'Finished'; }
+
+      let actionHtml = '';
+      if (team.status === 'active') {
+        actionHtml = `<button class="btn stop" onclick="adminStop('${escapeHtml(team.name)}')">Stop</button>`;
+      } else {
+        actionHtml = `<span class="dash">-</span>`;
+      }
+
+      tr.innerHTML = `
+        <td class="team">${escapeHtml(team.name)}</td>
+        <td>${team.startStation}</td>
+        <td>${team.currentStation}</td>
+        <td class="${statusClass}">${statusLabel}</td>
+        ${[1,2,3,4,5].map(n => `<td>${st(n)}</td>`).join('')}
+        <td class="time-cell">${fmt(team.totalTime)}</td>
+        <td>${actionHtml}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  // ---------- admin click detection ----------
+  let clickCount = 0;
+  let clickTimer = null;
+  const mask = document.getElementById('daliMask');
+  const hint = document.getElementById('clickHint');
+
+  mask.addEventListener('click', () => {
+    clickCount++;
+    hint.textContent = clickCount >= CLICKS_REQUIRED ? 'Enter password...' : `Click ${CLICKS_REQUIRED - clickCount} more time(s)`;
+    if (clickTimer) clearTimeout(clickTimer);
+    if (clickCount >= CLICKS_REQUIRED) {
+      clickCount = 0;
+      if (clickTimer) clearTimeout(clickTimer);
+      openPasswordModal();
+    } else {
+      clickTimer = setTimeout(() => {
+        clickCount = 0;
+        hint.textContent = `Admin panel - click mask ${CLICKS_REQUIRED} times`;
+      }, CLICK_WINDOW_MS);
+    }
+  });
+
+  // ---------- password modal ----------
+  const passModal = document.getElementById('passModal');
+  const passInput = document.getElementById('passInput');
+  const passErr = document.getElementById('passErr');
+  const passSubmit = document.getElementById('passSubmit');
+  const passCancel = document.getElementById('passCancel');
+
+  function openPasswordModal() {
+    passModal.classList.remove('hidden');
+    passInput.value = '';
+    passErr.textContent = '';
+    passInput.focus();
+  }
+  function closePasswordModal() {
+    passModal.classList.add('hidden');
+  }
+
+  function tryPassword() {
+    if (passInput.value === ADMIN_PASSWORD) {
+      closePasswordModal();
+      showAdmin();
+    } else {
+      passErr.textContent = 'Incorrect password.';
+      passInput.value = '';
+      passInput.focus();
+    }
+  }
+  passSubmit.addEventListener('click', tryPassword);
+  passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryPassword(); });
+  passCancel.addEventListener('click', closePasswordModal);
+
+  // ---------- admin panel ----------
+  function showAdmin() {
+    document.getElementById('adminView').classList.add('active');
+    document.getElementById('landing').classList.remove('active');
+    document.getElementById('teamView').classList.remove('active');
+    renderAdmin();
+  }
+  document.getElementById('closeAdmin').addEventListener('click', () => {
+    document.getElementById('adminView').classList.remove('active');
+    if (currentTeamName) document.getElementById('teamView').classList.add('active');
+    else document.getElementById('landing').classList.add('active');
+  });
+
+  window.adminStop = function(teamName) {
+    const team = teams[teamName];
+    if (!team) return;
+    stopStationTimerByAdmin(team);
+    render();
+  };
+
+  // ---------- excel export ----------
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const list = Object.values(teams);
+    if (list.length === 0) { alert('No teams to export.'); return; }
+    const header = ['Team Name', 'Start Station', 'Current Station', 'Status',
+      'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Total Time'];
+    const rows = [header];
+    list.forEach(team => {
+      let statusLabel = team.status.charAt(0).toUpperCase() + team.status.slice(1);
+      const row = [team.name, team.startStation, team.currentStation, statusLabel];
+      for (let i = 1; i <= STATION_COUNT; i++) {
+        const d = team.stationTimes[stationKey(i)];
+        row.push(d && d.duration != null ? fmt(d.duration) : '--:--');
+      }
+      row.push(fmt(team.totalTime));
+      rows.push(row);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // column widths
+    const widths = [20, 14, 14, 12, 11, 11, 11, 11, 11, 12];
+    ws['!cols'] = widths.map(w => ({ width: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
+    XLSX.writeFile(wb, 'logic-heist-times.xlsx');
+  });
+
+  // ---------- team actions ----------
+  document.getElementById('joinBtn').addEventListener('click', () => {
+    const name = document.getElementById('teamName').value.trim();
+    const station = parseInt(document.getElementById('startStation').value, 10);
+    if (!name) { alert('Please enter a team name.'); return; }
+    if (!station || station < 1 || station > 5) { alert('Pick a station.'); return; }
+    // one instance per team name - reset on re-join
+    teams[name] = makeTeam(name, station);
+    currentTeamName = name;
+    saveState();
+    startTick();
+    render();
+  });
+
+  document.getElementById('startStationBtn').addEventListener('click', () => {
+    const team = teams[currentTeamName];
+    if (!team) return;
+    startStationTimer(team);
+    render();
+  });
+
+  document.getElementById('leaveBtn').addEventListener('click', () => {
+    if (confirm('Leave this team view? You can re-join anytime.')) {
+      currentTeamName = null;
+      render();
+    }
+  });
+
+  // ---------- init ----------
+  loadState();
+  if (Object.keys(teams).length > 0) startTick();
+  render();
+</script>
+</body>
+</html>

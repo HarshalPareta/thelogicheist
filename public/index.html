@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Logic Heist - Join</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <svg id="daliMask" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-label="Admin" title="Admin">
+    <defs>
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>
+    <ellipse cx="50" cy="46" rx="30" ry="33" fill="#0a0a0a" stroke="var(--accent)" stroke-width="3" filter="url(#glow)"/>
+    <path d="M28 34 Q33 30 38 34 Q33 38 28 34" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M72 34 Q67 30 62 34 Q67 38 72 34" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M45 42 L50 48 L55 42" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M24 50 Q46 54 50 58 Q54 54 76 50" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M50 72 Q50 82 50 92" fill="none" stroke="var(--accent)" stroke-width="2" opacity="0.5"/>
+  </svg>
+  <h1>The Logic Heist</h1>
+  <div class="click-hint" id="clickHint">Admin panel - click mask 5 times</div>
+</header>
+
+<div id="landing" class="screen active">
+  <div class="card">
+    <h2>Join The Heist</h2>
+    <p class="sub">Enter your team name and the station where you begin.</p>
+    <label>Team Name</label>
+    <input type="text" id="teamName" placeholder="e.g. Phantom Crew" maxlength="30">
+    <label>Starting Station (1-5)</label>
+    <select id="startStation">
+      <option value="1">Station 1</option>
+      <option value="2">Station 2</option>
+      <option value="3">Station 3</option>
+      <option value="4">Station 4</option>
+      <option value="5">Station 5</option>
+    </select>
+    <button class="btn" id="joinBtn">Enter The Heist</button>
+    <div style="margin-top:14px; font-size:0.85rem; color:var(--muted);">
+      12 min puzzle limit per station &bull; 2 min transition after stop
+    </div>
+  </div>
+</div>
+
+<!-- Password modal (unlock admin on this device) -->
+<div class="modal-overlay hidden" id="passModal">
+  <div class="modal">
+    <h3>Admin Access</h3>
+    <p>Enter the station master password</p>
+    <input type="password" id="passInput" placeholder="Password">
+    <div class="btn-row">
+      <button class="btn secondary" id="passCancel">Cancel</button>
+      <button class="btn" id="passSubmit">Unlock</button>
+    </div>
+    <div id="passErr"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const CLICKS_REQUIRED = 5;
+  const CLICK_WINDOW_MS = 3000;
+  const ADMIN_PASSWORD = 'Harshal@148';
+
+  let clickCount = 0;
+  let clickTimer = null;
+  const mask = document.getElementById('daliMask');
+  const hint = document.getElementById('clickHint');
+  const socket = io();
+
+  mask.addEventListener('click', () => {
+    clickCount++;
+    hint.textContent = clickCount >= CLICKS_REQUIRED ? 'Enter password...' : `Click ${CLICKS_REQUIRED - clickCount} more time(s)`;
+    mask.classList.add('hint');
+    if (clickTimer) clearTimeout(clickTimer);
+    if (clickCount >= CLICKS_REQUIRED) {
+      clickCount = 0;
+      if (clickTimer) clearTimeout(clickTimer);
+      openPasswordModal();
+    } else {
+      clickTimer = setTimeout(() => {
+        clickCount = 0;
+        mask.classList.remove('hint');
+        hint.textContent = `Admin panel - click mask ${CLICKS_REQUIRED} times`;
+      }, CLICK_WINDOW_MS);
+    }
+  });
+
+  const passModal = document.getElementById('passModal');
+  const passInput = document.getElementById('passInput');
+  const passErr = document.getElementById('passErr');
+  const passSubmit = document.getElementById('passSubmit');
+  const passCancel = document.getElementById('passCancel');
+
+  function openPasswordModal() {
+    passModal.classList.remove('hidden');
+    passInput.value = '';
+    passErr.textContent = '';
+    passInput.focus();
+  }
+  function closePasswordModal() {
+    passModal.classList.add('hidden');
+  }
+  function tryPassword() {
+    socket.emit('admin:auth', { password: passInput.value });
+  }
+  socket.on('admin:authed', (ok) => {
+    if (ok) {
+      closePasswordModal();
+      window.location.href = '/admin';
+    } else {
+      passErr.textContent = 'Incorrect password.';
+      passInput.value = '';
+      passInput.focus();
+    }
+  });
+  passSubmit.addEventListener('click', tryPassword);
+  passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryPassword(); });
+  passCancel.addEventListener('click', closePasswordModal);
+
+  // Team join
+  document.getElementById('joinBtn').addEventListener('click', () => {
+    const name = document.getElementById('teamName').value.trim();
+    const station = document.getElementById('startStation').value;
+    if (!name) { alert('Please enter a team name.'); return; }
+    socket.emit('team:join', { name, startStation: station });
+    localStorage.setItem('lh_team', name);
+    localStorage.setItem('lh_station', station);
+    window.location.href = '/team';
+  });
+</script>
+</body>
+</html>

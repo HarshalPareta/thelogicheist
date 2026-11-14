@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Logic Heist - Team Dashboard</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <h1>The Logic Heist</h1>
+  <button class="btn secondary" id="leaveBtn" style="margin-left:auto; padding:8px 14px; font-size:0.85rem;">Leave / Change Team</button>
+</header>
+
+<div id="teamView" class="screen active">
+  <div class="card">
+    <h2>Station <span id="curStationLabel">1</span></h2>
+    <div id="stationChip" class="station-chip">1</div>
+
+    <!-- Timer views -->
+    <div id="timerArea" style="display:none;">
+      <div class="timer-big" id="timerDisplay">12:00</div>
+      <div class="timer-label" id="timerLabel">Time Remaining</div>
+    </div>
+    <div class="status-text" id="statusText" style="display:none;"></div>
+
+    <!-- Start station timer -->
+    <button class="btn" id="startStationBtn">Start Station Timer</button>
+
+    <!-- Station selection -->
+    <div id="stationSelectArea" style="display:none; margin-top:18px;">
+      <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text); text-align:left;">Select your next assigned station</label>
+      <select id="nextStationSelect"></select>
+      <button class="btn" id="confirmStationBtn">Select Station</button>
+    </div>
+
+    <div style="margin-top:14px; font-size:0.85rem; color:var(--muted);">
+      Team: <span id="teamNameLabel">-</span> &bull; Completed: <span id="completedLabel">none</span>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const STATION_COUNT = 5;
+  const STATION_LIMIT_MS = 12 * 60 * 1000;
+  const TRANSITION_LIMIT_MS = 2 * 60 * 1000;
+
+  let myName = localStorage.getItem('lh_team') || '';
+  let teams = {};
+  let socket = io();
+
+  const curStationLabel = document.getElementById('curStationLabel');
+  const stationChip = document.getElementById('stationChip');
+  const timerArea = document.getElementById('timerArea');
+  const timerDisplay = document.getElementById('timerDisplay');
+  const timerLabel = document.getElementById('timerLabel');
+  const statusText = document.getElementById('statusText');
+  const startStationBtn = document.getElementById('startStationBtn');
+  const stationSelectArea = document.getElementById('stationSelectArea');
+  const nextStationSelect = document.getElementById('nextStationSelect');
+  const confirmStationBtn = document.getElementById('confirmStationBtn');
+  const teamNameLabel = document.getElementById('teamNameLabel');
+  const completedLabel = document.getElementById('completedLabel');
+
+  teamNameLabel.textContent = myName;
+
+  function fmt(ms) {
+    if (ms == null || ms < 0) return '--:--';
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  function stationKey(n) { return 's' + n; }
+
+  function populateStationSelect(team) {
+    nextStationSelect.innerHTML = '';
+    const avail = [...Array(STATION_COUNT).keys()].map(i => i + 1).filter(s => !team.completedStations.includes(s));
+    avail.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s;
+      o.textContent = `Station ${s}`;
+      nextStationSelect.appendChild(o);
+    });
+  }
+
+  function render() {
+    const team = teams[myName];
+    if (!team) return;
+
+    curStationLabel.textContent = team.currentStation;
+    stationChip.textContent = team.currentStation;
+    stationChip.className = 'station-chip' + (team.status === 'transition' ? ' transition' : '');
+    completedLabel.textContent = team.completedStations.length ? team.completedStations.join(', ') : 'none';
+
+    timerArea.style.display = 'none';
+    startStationBtn.style.display = 'none';
+    statusText.style.display = 'none';
+    stationSelectArea.style.display = 'none';
+
+    if (team.status === 'idle') {
+      startStationBtn.style.display = 'block';
+      startStationBtn.textContent = 'Start Station Timer';
+      startStationBtn.disabled = false;
+    } else if (team.status === 'active') {
+      timerArea.style.display = 'block';
+      statusText.style.display = 'none';
+      timerLabel.textContent = 'Time Remaining';
+      const remaining = STATION_LIMIT_MS - (Date.now() - (team.stationTimerStart || Date.now()));
+      timerDisplay.textContent = remaining <= 0 ? '00:00' : fmt(remaining);
+    } else if (team.status === 'transition') {
+      timerArea.style.display = 'block';
+      statusText.style.display = 'none';
+      timerLabel.textContent = 'Transition window';
+      const remaining = TRANSITION_LIMIT_MS - (Date.now() - (team.transitionStart || Date.now()));
+      timerDisplay.textContent = remaining <= 0 ? '00:00' : fmt(remaining);
+    } else if (team.status === 'station_select') {
+      stationSelectArea.style.display = 'block';
+      populateStationSelect(team);
+    } else if (team.status === 'finished') {
+      statusText.style.display = 'block';
+      statusText.textContent = 'All stations complete — Heist finished!';
+      statusText.className = 'status-text';
+    }
+  }
+
+  socket.on('state:init', (t) => { teams = t; render(); });
+  socket.on('state:update', (t) => { teams = t; render(); });
+
+  socket.on('connect', () => {
+    socket.emit('team:identify', { name: myName });
+  });
+
+  startStationBtn.addEventListener('click', () => {
+    socket.emit('team:start', { name: myName });
+  });
+
+  confirmStationBtn.addEventListener('click', () => {
+    socket.emit('team:select_station', { name: myName, station: nextStationSelect.value });
+  });
+
+  document.getElementById('leaveBtn').addEventListener('click', () => {
+    localStorage.removeItem('lh_team');
+    localStorage.removeItem('lh_station');
+    window.location.href = '/';
+  });
+
+  setInterval(render, 1000);
+</script>
+</body>
+</html>
