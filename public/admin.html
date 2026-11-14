@@ -256,18 +256,16 @@
   document.getElementById('exportBtn').addEventListener('click', () => {
     const list = Object.values(teams);
     if (list.length === 0) { alert('No teams to export.'); return; }
-    const header = ['Team Name', 'Start Station', 'Current Station', 'Status',
+    const header = ['Team Name', 'Start Station', 'Current Station',
       'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Total Time'];
     const greenFill = { fgColor: { rgb: '0000FF00' } };
-    const headerRow = header.map(h => ({ t: 's', v: h, s: { fill: greenFill, font: { bold: true } } }));
+    const headerRow = header.map(h => ({ t: 's', v: h, s: { font: { bold: true } } }));
     const rows = [headerRow];
     list.forEach(team => {
-      let statusLabel = team.status.charAt(0).toUpperCase() + team.status.slice(1);
       const row = [
         { t: 's', v: team.name },
         { t: 'n', v: team.startStation },
-        { t: 'n', v: team.currentStation },
-        { t: 's', v: statusLabel }
+        { t: 'n', v: team.currentStation }
       ];
       for (let i = 1; i <= STATION_COUNT; i++) {
         const d = team.stationTimes[stationKey(i)];
@@ -282,7 +280,7 @@
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20, 14, 14, 12, 11, 11, 11, 11, 11, 12].map(w => ({ width: w }));
+    ws['!cols'] = [20, 14, 14, 11, 11, 11, 11, 11, 12].map(w => ({ width: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
     XLSX.writeFile(wb, 'logic-heist-times.xlsx');
