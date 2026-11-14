@@ -174,7 +174,7 @@
       const assignBtn = authed ? `<button class="btn assign" onclick="appAssign('${escapeHtml(team.name)}', document.getElementById('assign-${escapeHtml(team.name)}').value)">Assign</button>` : '';
 
       tr.innerHTML = `
-        <td class="team">${escapeHtml(team.name)}</td>
+        <td class="team">${escapeHtml(team.name)}${team.status !== 'finished' && authed ? '<br><button class="btn start" style="font-size:0.75rem;padding:4px 6px;" onclick="appCompleteTeam(\'' + escapeHtml(team.name) + '\')">Mark Complete</button>' : ''}</td>
         <td>${team.startStation}</td>
         <td>${team.currentStation}</td>
         <td class="${statusClass}">${statusLabel}</td>
@@ -229,6 +229,12 @@
     socket.emit('admin:clear');
   };
 
+  window.appCompleteTeam = function(teamName) {
+    if (!authed) return;
+    if (!confirm('Mark team ' + teamName + ' as completed?')) return;
+    socket.emit('admin:complete_team', { name: teamName });
+  };
+
   function escapeHtml(t) {
     const div = document.createElement('div');
     div.textContent = t;
@@ -257,8 +263,9 @@
     const list = Object.values(teams);
     if (list.length === 0) { alert('No teams to export.'); return; }
     const header = ['Team Name', 'Start Station', 'Current Station',
-      'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Total Time'];
-    const greenFill = { fgColor: { rgb: '0000FF00' } };
+      'St 1 Time', 'St 2 Time', 'St 3 Time', 'St 4 Time', 'St 5 Time',
+      'St 1 Done', 'St 2 Done', 'St 3 Done', 'St 4 Done', 'St 5 Done',
+      'Total Time (sec)', 'Final Score'];
     const headerRow = header.map(h => ({ t: 's', v: h, s: { font: { bold: true } } }));
     const rows = [headerRow];
     list.forEach(team => {
@@ -271,16 +278,19 @@
         const d = team.stationTimes[stationKey(i)];
         const isCompleted = team.completedStations.includes(i);
         const cell = { t: 's', v: isCompleted && d && d.duration != null ? fmt(d.duration) : '' };
-        if (isCompleted) {
-          cell.s = { fill: greenFill, font: { bold: true, color: { rgb: '00FFFFFF' } } };
-        }
         row.push(cell);
       }
-      row.push({ t: 's', v: fmt(team.totalTime), s: { font: { bold: true } } });
+      for (let i = 1; i <= STATION_COUNT; i++) {
+        const isCompleted = team.completedStations.includes(i);
+        row.push({ t: 'n', v: isCompleted ? 1 : 0 });
+      }
+      row.push({ t: 'n', v: team.totalTime });
+      const lastRow = rows.length;
+      row.push({ t: 'f', v: `=SUMPRODUCT(--(I${lastRow}:M${lastRow}=1))*100 - N${lastRow}` });
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20, 14, 14, 11, 11, 11, 11, 11, 12].map(w => ({ width: w }));
+    ws['!cols'] = [20, 12, 12, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 14, 14].map(w => ({ width: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
     XLSX.writeFile(wb, 'logic-heist-times.xlsx');

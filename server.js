@@ -44,6 +44,7 @@ function makeTeam(name, startStation) {
     currentStation: startStation,
     status: 'idle',
     completedStations: [],
+    completed: false,
     stationTimes: s,
     stationTimerStart: null,
     transitionStart: null,
@@ -235,6 +236,15 @@ function markStationCompleteByAdmin(team, stationNumber) {
   return true;
 }
 
+function completeTeamByAdmin(team) {
+  if (team.status === 'finished') return false;
+  team.status = 'finished';
+  team.completed = true;
+  team.updatedAt = now();
+  saveState();
+  return true;
+}
+
 function assignStation(team, station) {
   station = parseInt(station, 10);
   if (station < 1 || station > STATION_COUNT) return false;
@@ -345,6 +355,15 @@ io.on('connection', (socket) => {
     const team = teams[name];
     if (!team) return;
     markStationCompleteByAdmin(team, station);
+    broadcast();
+    io.to('team:' + name).emit('state:update', teams);
+  });
+
+  socket.on('admin:complete_team', ({ name }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    completeTeamByAdmin(team);
     broadcast();
     io.to('team:' + name).emit('state:update', teams);
   });
