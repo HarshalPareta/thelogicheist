@@ -37,7 +37,7 @@ function stationKey(n) { return 's' + n; }
 
 function makeTeam(name, startStation) {
   const s = {};
-  for (let i = 1; i <= STATION_COUNT; i++) s[stationKey(i)] = { start: null, end: null, duration: null };
+  for (let i = 1; i <= STATION_COUNT; i++) s[stationKey(i)] = { start: null, end: null, duration: null, pausedElapsed: 0 };
   return {
     name,
     startStation: startStation,
@@ -82,7 +82,7 @@ function completeStation(team, endTime) {
   const start = team.stationTimerStart || endTime - STATION_LIMIT_MS;
   const end = endTime;
   const duration = end - start;
-  team.stationTimes[stationKey(cs)] = { start, end, duration };
+  team.stationTimes[stationKey(cs)] = { start, end, duration, pausedElapsed: 0 };
   team.totalTime += duration;
   team.stationTimerStart = null;
   team.completedStations.push(cs);
@@ -108,19 +108,54 @@ function skipTransition(team) {
   return true;
 }
 
-function startStationTimer(team) {
-  if (team.status !== 'idle') return false;
-  team.status = 'active';
-  team.stationTimerStart = now();
+function startOrResumeTeam(team) {
+  if (team.status === 'idle') {
+    team.status = 'active';
+    team.stationTimerStart = now();
+  } else if (team.status === 'paused') {
+    team.status = 'active';
+    const cs = team.currentStation;
+    const elapsed = (team.stationTimes[stationKey(cs)] && team.stationTimes[stationKey(cs)].pausedElapsed) || 0;
+    team.stationTimerStart = now() - elapsed;
+  } else {
+    return false;
+  }
   team.updatedAt = now();
   saveState();
   startTick();
   return true;
 }
 
+function pauseTeam(team) {
+  if (team.status !== 'active') return false;
+  const cs = team.currentStation;
+  const elapsed = now() - team.stationTimerStart;
+  if (!team.stationTimes[stationKey(cs)]) team.stationTimes[stationKey(cs)] = { start: null, end: null, duration: null, pausedElapsed: 0 };
+  team.stationTimes[stationKey(cs)].pausedElapsed = (team.stationTimes[stationKey(cs)].pausedElapsed || 0) + elapsed;
+  team.status = 'paused';
+  team.stationTimerStart = null;
+  team.updatedAt = now();
+  saveState();
+  return true;
+}
+
 function stopStationTimerByAdmin(team) {
   if (team.status !== 'active') return false;
   completeStation(team, now());
+  saveState();
+  return true;
+}
+
+function assignStation(team, station) {
+  station = parseInt(station, 10);
+  if (station < 1 || station > STATION_COUNT) return false;
+  team.currentStation = station;
+  team.stationTimes[stationKey(station)] = { start: null, end: null, duration: null, pausedElapsed: 0 };
+  team.completedStations = team.completedStations.filter(s => s !== station);
+  team.status = 'idle';
+  team.stationTimerStart = null;
+  team.transitionStart = null;
+  team.updatedAt = now();
   saveState();
   return true;
 }
@@ -161,7 +196,7 @@ io.on('connection', (socket) => {
   socket.on('team:start', ({ name }) => {
     const team = teams[name];
     if (!team) return;
-    startStationTimer(team);
+    startOrResumeTeam(team);
     broadcast();
   });
 
@@ -180,6 +215,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('admin:start', ({ name }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    startOrResumeTeam(team);
+    broadcast();
+  });
+
+  socket.on('admin:pause', ({ name }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    pauseTeam(team);
+    broadcast();
+  });
+
   socket.on('admin:stop', ({ name }) => {
     if (!adminSockets.has(socket.id)) return;
     const team = teams[name];
@@ -194,6 +245,13 @@ io.on('connection', (socket) => {
     if (!team) return;
     skipTransition(team);
     broadcast();
+  });
+
+  socket.on('admin:assign_station', ({ name, station }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    if (assignStation(team, station)) broadcast();
   });
 
   socket.on('admin:clear', () => {

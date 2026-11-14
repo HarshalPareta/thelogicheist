@@ -111,6 +111,16 @@
       timerLabel.textContent = 'Time Remaining';
       const remaining = STATION_LIMIT_MS - (Date.now() - (team.stationTimerStart || Date.now()));
       timerDisplay.textContent = remaining <= 0 ? '00:00' : fmt(remaining);
+    } else if (team.status === 'paused') {
+      timerArea.style.display = 'block';
+      statusText.style.display = 'block';
+      statusText.textContent = 'Paused — Admin will resume';
+      statusText.className = 'status-text wait';
+      timerLabel.textContent = 'Time Remaining';
+      const cs = team.currentStation;
+      const pausedElapsed = (team.stationTimes[stationKey(cs)] && team.stationTimes[stationKey(cs)].pausedElapsed) || 0;
+      const remaining = STATION_LIMIT_MS - pausedElapsed;
+      timerDisplay.textContent = remaining <= 0 ? '00:00' : fmt(remaining);
     } else if (team.status === 'transition') {
       timerArea.style.display = 'block';
       statusText.style.display = 'none';

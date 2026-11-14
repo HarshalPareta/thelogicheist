@@ -51,6 +51,7 @@
             <th>St 5</th>
             <th>Total</th>
             <th>Action</th>
+            <th>Assign Station</th>
           </tr>
         </thead>
         <tbody id="adminSheetBody"></tbody>
@@ -135,18 +136,27 @@
       };
       let statusClass = 'wait', statusLabel = 'Idle';
       if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
+      else if (team.status === 'paused') { statusClass = 'wait'; statusLabel = 'Paused'; }
       else if (team.status === 'transition') { statusClass = 'trans'; statusLabel = 'Transition'; }
       else if (team.status === 'station_select') { statusClass = 'trans'; statusLabel = 'Selecting Station'; }
       else if (team.status === 'finished') { statusClass = 'wait'; statusLabel = 'Finished'; }
 
       let actionHtml = '';
       if (team.status === 'active' && authed) {
-        actionHtml = `<button class="btn stop" onclick="appStop('${escapeHtml(team.name)}')">Stop</button>`;
+        actionHtml = `<button class="btn pause" onclick="appPause('${escapeHtml(team.name)}')">Pause</button>`;
+        actionHtml += `<button class="btn stop" onclick="appStop('${escapeHtml(team.name)}')">Stop</button>`;
+      } else if (team.status === 'paused' && authed) {
+        actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Resume</button>`;
+      } else if (team.status === 'idle' && authed) {
+        actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Start</button>`;
       } else if (team.status === 'transition' && authed) {
-        actionHtml = `<button class="btn stop" onclick="appSkip('${escapeHtml(team.name)}')">Skip Transition</button>`;
+        actionHtml = `<button class="btn skip" onclick="appSkip('${escapeHtml(team.name)}')">Skip Transition</button>`;
       } else {
         actionHtml = `<span class="dash">-</span>`;
       }
+
+      const assignSelect = `<select class="assign-select" id="assign-${escapeHtml(team.name)}">${[1,2,3,4,5].map(n => `<option value="${n}" ${team.currentStation == n ? 'selected' : ''}>Station ${n}</option>`).join('')}</select>`;
+      const assignBtn = authed ? `<button class="btn assign" onclick="appAssign('${escapeHtml(team.name)}', document.getElementById('assign-${escapeHtml(team.name)}').value)">Assign</button>` : '';
 
       tr.innerHTML = `
         <td class="team">${escapeHtml(team.name)}</td>
@@ -156,6 +166,7 @@
         ${[1,2,3,4,5].map(n => `<td>${st(n)}</td>`).join('')}
         <td class="time-cell">${fmt(team.totalTime)}</td>
         <td>${actionHtml}</td>
+        <td>${assignSelect} ${assignBtn}</td>
       `;
       body.appendChild(tr);
     });
@@ -169,6 +180,21 @@
   window.appSkip = function(teamName) {
     if (!authed) return;
     socket.emit('admin:skip_transition', { name: teamName });
+  };
+
+  window.appPause = function(teamName) {
+    if (!authed) return;
+    socket.emit('admin:pause', { name: teamName });
+  };
+
+  window.appStart = function(teamName) {
+    if (!authed) return;
+    socket.emit('admin:start', { name: teamName });
+  };
+
+  window.appAssign = function(teamName, station) {
+    if (!authed) return;
+    socket.emit('admin:assign_station', { name: teamName, station: station });
   };
 
   window.appClear = function() {

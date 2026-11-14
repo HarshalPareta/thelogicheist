@@ -102,6 +102,23 @@ input::placeholder { color: #555; }
 .btn.secondary:hover { background: #333; }
 .btn.stop { background: var(--red); }
 .btn.stop:hover { background: #c0392b; }
+.btn.pause { background: #e67e22; }
+.btn.pause:hover { background: #d35400; }
+.btn.start { background: #2ecc71; }
+.btn.start:hover { background: #27ae60; }
+.btn.skip { background: #3498db; }
+.btn.skip:hover { background: #2980b9; }
+.btn.assign { background: #8e44ad; }
+.btn.assign:hover { background: #7d3c98; }
+.assign-select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #0a0a0a;
+  color: var(--text);
+  font-size: 0.85rem;
+  margin-right: 4px;
+}
 .station-chip {
   display: inline-flex;
   align-items: center;
