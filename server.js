@@ -85,7 +85,7 @@ function completeStation(team, endTime) {
   team.stationTimes[stationKey(cs)] = { start, end, duration, pausedElapsed: 0 };
   team.totalTime += duration;
   team.stationTimerStart = null;
-  team.completedStations.push(cs);
+  team.completedStations = team.completedStations.filter(s => s !== cs);
   team.status = 'transition';
   team.transitionStart = end;
   team.updatedAt = end;
@@ -142,6 +142,95 @@ function pauseTeam(team) {
 function stopStationTimerByAdmin(team) {
   if (team.status !== 'active') return false;
   completeStation(team, now());
+  saveState();
+  return true;
+}
+
+function adminCompleteStation(team) {
+  const cs = team.currentStation;
+  const endTime = now();
+  let duration = 0;
+  const existing = team.stationTimes[stationKey(cs)];
+
+  if (existing && existing.duration != null) {
+    duration = existing.duration;
+  } else if (team.status === 'active' && team.stationTimerStart) {
+    duration = endTime - team.stationTimerStart;
+  } else if (team.status === 'paused') {
+    duration = (existing && existing.pausedElapsed) || 0;
+  }
+
+  team.stationTimes[stationKey(cs)] = {
+    start: existing && existing.start ? existing.start : endTime - duration,
+    end: endTime,
+    duration: duration,
+    pausedElapsed: 0,
+    completed: true
+  };
+  team.totalTime += duration;
+  team.stationTimerStart = null;
+  team.transitionStart = null;
+
+  if (!team.completedStations.includes(cs)) {
+    team.completedStations.push(cs);
+  }
+
+  team.status = 'station_select';
+  team.updatedAt = endTime;
+  saveState();
+  return true;
+}
+
+function markStationCompleteByAdmin(team, stationNumber) {
+  stationNumber = parseInt(stationNumber, 10);
+  if (stationNumber < 1 || stationNumber > STATION_COUNT) return false;
+
+  // Can only mark the current station as completed
+  if (team.currentStation !== stationNumber) {
+    return false;
+  }
+
+  // Cannot mark a station completed while its timer is actively running
+  if (team.status === 'active' && team.currentStation === stationNumber && team.stationTimerStart) {
+    return false;
+  }
+
+  const key = stationKey(stationNumber);
+  const endTime = now();
+  const existing = team.stationTimes[key];
+  let duration = 0;
+
+  if (existing && existing.duration != null) {
+    duration = existing.duration;
+  } else if (team.status === 'active' && team.currentStation === stationNumber && team.stationTimerStart) {
+    duration = endTime - team.stationTimerStart;
+  } else if (team.status === 'paused' && team.currentStation === stationNumber) {
+    duration = (existing && existing.pausedElapsed) || 0;
+  }
+
+  team.stationTimes[key] = {
+    start: existing && existing.start ? existing.start : endTime - duration,
+    end: endTime,
+    duration: duration,
+    pausedElapsed: 0,
+    completed: true
+  };
+
+  if (!team.completedStations.includes(stationNumber)) {
+    team.completedStations.push(stationNumber);
+  }
+
+  team.totalTime = 0;
+  for (let i = 1; i <= STATION_COUNT; i++) {
+    const d = team.stationTimes[stationKey(i)];
+    if (d && d.duration != null) team.totalTime += d.duration;
+  }
+
+  if (team.completedStations.length >= STATION_COUNT) {
+    team.status = 'finished';
+  }
+
+  team.updatedAt = endTime;
   saveState();
   return true;
 }
@@ -221,6 +310,7 @@ io.on('connection', (socket) => {
     if (!team) return;
     startOrResumeTeam(team);
     broadcast();
+    io.to('team:' + name).emit('state:update', teams);
   });
 
   socket.on('admin:pause', ({ name }) => {
@@ -229,6 +319,7 @@ io.on('connection', (socket) => {
     if (!team) return;
     pauseTeam(team);
     broadcast();
+    io.to('team:' + name).emit('state:update', teams);
   });
 
   socket.on('admin:stop', ({ name }) => {
@@ -237,6 +328,25 @@ io.on('connection', (socket) => {
     if (!team) return;
     stopStationTimerByAdmin(team);
     broadcast();
+    io.to('team:' + name).emit('state:update', teams);
+  });
+
+  socket.on('admin:complete_station', ({ name }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    adminCompleteStation(team);
+    broadcast();
+    io.to('team:' + name).emit('state:update', teams);
+  });
+
+  socket.on('admin:mark_station_complete', ({ name, station }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    markStationCompleteByAdmin(team, station);
+    broadcast();
+    io.to('team:' + name).emit('state:update', teams);
   });
 
   socket.on('admin:skip_transition', ({ name }) => {
@@ -245,13 +355,17 @@ io.on('connection', (socket) => {
     if (!team) return;
     skipTransition(team);
     broadcast();
+    io.to('team:' + name).emit('state:update', teams);
   });
 
   socket.on('admin:assign_station', ({ name, station }) => {
     if (!adminSockets.has(socket.id)) return;
     const team = teams[name];
     if (!team) return;
-    if (assignStation(team, station)) broadcast();
+    if (assignStation(team, station)) {
+      broadcast();
+      io.to('team:' + name).emit('state:update', teams);
+    }
   });
 
   socket.on('admin:clear', () => {

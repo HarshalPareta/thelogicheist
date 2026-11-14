@@ -144,6 +144,10 @@
     socket.emit('team:identify', { name: myName });
   });
 
+  socket.on('reconnect', () => {
+    socket.emit('team:identify', { name: myName });
+  });
+
   startStationBtn.addEventListener('click', () => {
     socket.emit('team:start', { name: myName });
   });

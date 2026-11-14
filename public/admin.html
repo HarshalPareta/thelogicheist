@@ -10,7 +10,7 @@
 <body>
 
 <header>
-  <button class="close-admin" id="backBtn" style="position:static; margin-right:auto;">&larr; Back</button>
+  <button class="close-admin" id="backBtn">&larr; Back</button>
   <h1>The Logic Heist &mdash; Admin</h1>
 </header>
 
@@ -33,7 +33,7 @@
       </div>
       <div class="admin-actions">
         <button class="btn" id="exportBtn">Export Excel</button>
-        <button class="btn stop" id="clearBtn" style="margin-left:8px;">Clear All Results</button>
+        <button class="btn stop" id="clearBtn">Clear All Results</button>
       </div>
     </div>
     <div id="adminTableWrap">
@@ -131,8 +131,20 @@
       const tr = document.createElement('tr');
       const st = (n) => {
         const d = team.stationTimes[stationKey(n)];
-        if (!d || d.duration == null) return '<span class="dash">--:--</span>';
-        return `<span class="time-cell">${fmt(d.duration)}</span>`;
+        const isCompleted = team.completedStations.includes(n);
+        const isCurrentStation = team.currentStation === n;
+        const timerRunningOnThisStation = team.status === 'active' && isCurrentStation && team.stationTimerStart;
+        const timeStr = d && d.duration != null ? fmt(d.duration) : '--:--';
+        if (isCompleted) {
+          return `<span class="checkmark done" title="Completed">${timeStr} <span class="check-icon">&#10003;</span></span>`;
+        }
+        if (!isCurrentStation) {
+          return `<span class="checkmark disabled" title="Only current station can be completed">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
+        }
+        if (timerRunningOnThisStation) {
+          return `<span class="checkmark running" title="Timer is running — stop it first">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
+        }
+        return `<span class="checkmark pending" onclick="appMarkStationComplete('${escapeHtml(team.name)}', ${n})" title="Mark Station ${n} as completed">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
       };
       let statusClass = 'wait', statusLabel = 'Idle';
       if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
@@ -145,10 +157,13 @@
       if (team.status === 'active' && authed) {
         actionHtml = `<button class="btn pause" onclick="appPause('${escapeHtml(team.name)}')">Pause</button>`;
         actionHtml += `<button class="btn stop" onclick="appStop('${escapeHtml(team.name)}')">Stop</button>`;
+        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'paused' && authed) {
         actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Resume</button>`;
+        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'idle' && authed) {
         actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Start</button>`;
+        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'transition' && authed) {
         actionHtml = `<button class="btn skip" onclick="appSkip('${escapeHtml(team.name)}')">Skip Transition</button>`;
       } else {
@@ -197,6 +212,17 @@
     socket.emit('admin:assign_station', { name: teamName, station: station });
   };
 
+  window.appComplete = function(teamName) {
+    if (!authed) return;
+    if (!confirm('Mark this station as completed for ' + teamName + '?')) return;
+    socket.emit('admin:complete_station', { name: teamName });
+  };
+
+  window.appMarkStationComplete = function(teamName, station) {
+    if (!authed) return;
+    socket.emit('admin:mark_station_complete', { name: teamName, station: station });
+  };
+
   window.appClear = function() {
     if (!authed) return;
     if (!confirm('WARNING: This will delete ALL team data and cannot be undone. Continue?')) return;
@@ -209,27 +235,50 @@
     return div.innerHTML;
   }
 
+  socket.on('connect', () => {
+    if (authed) {
+      socket.emit('admin:auth', { password: ADMIN_PASSWORD });
+    }
+  });
+
+  socket.on('reconnect', () => {
+    if (authed) {
+      socket.emit('admin:auth', { password: ADMIN_PASSWORD });
+    }
+  });
+
   socket.on('state:init', (t) => { teams = t; renderAdmin(); });
   socket.on('state:update', (t) => { teams = t; renderAdmin(); });
   socket.on('admin:authed', (ok) => {
     if (!ok) { passErr.textContent = 'Auth failed.'; }
   });
 
-  // Excel export
   document.getElementById('exportBtn').addEventListener('click', () => {
     const list = Object.values(teams);
     if (list.length === 0) { alert('No teams to export.'); return; }
     const header = ['Team Name', 'Start Station', 'Current Station', 'Status',
       'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Total Time'];
-    const rows = [header];
+    const greenFill = { fgColor: { rgb: '0000FF00' } };
+    const headerRow = header.map(h => ({ t: 's', v: h, s: { fill: greenFill, font: { bold: true } } }));
+    const rows = [headerRow];
     list.forEach(team => {
       let statusLabel = team.status.charAt(0).toUpperCase() + team.status.slice(1);
-      const row = [team.name, team.startStation, team.currentStation, statusLabel];
+      const row = [
+        { t: 's', v: team.name },
+        { t: 'n', v: team.startStation },
+        { t: 'n', v: team.currentStation },
+        { t: 's', v: statusLabel }
+      ];
       for (let i = 1; i <= STATION_COUNT; i++) {
         const d = team.stationTimes[stationKey(i)];
-        row.push(d && d.duration != null ? fmt(d.duration) : '--:--');
+        const isCompleted = team.completedStations.includes(i);
+        const cell = { t: 's', v: isCompleted && d && d.duration != null ? fmt(d.duration) : '' };
+        if (isCompleted) {
+          cell.s = { fill: greenFill, font: { bold: true, color: { rgb: '00FFFFFF' } } };
+        }
+        row.push(cell);
       }
-      row.push(fmt(team.totalTime));
+      row.push({ t: 's', v: fmt(team.totalTime), s: { font: { bold: true } } });
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
