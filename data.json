@@ -4,10 +4,7 @@
     "startStation": 1,
     "currentStation": 5,
     "status": "station_select",
-    "completedStations": [
-      1,
-      2
-    ],
+    "completedStations": [1, 2],
     "stationTimes": {
       "s1": {
         "start": 1794670563530,
@@ -46,5 +43,48 @@
     "transitionStart": null,
     "totalTime": 7354,
     "updatedAt": 1794670590834
+  },
+  "Lokesh": {
+    "name": "Lokesh",
+    "startStation": 1,
+    "currentStation": 4,
+    "status": "station_select",
+    "completedStations": [4],
+    "stationTimes": {
+      "s1": {
+        "start": null,
+        "end": null,
+        "duration": null,
+        "pausedElapsed": 0
+      },
+      "s2": {
+        "start": null,
+        "end": null,
+        "duration": null,
+        "pausedElapsed": 0
+      },
+      "s3": {
+        "start": null,
+        "end": null,
+        "duration": null,
+        "pausedElapsed": 0
+      },
+      "s4": {
+        "start": 1794672498469,
+        "end": 1794672504575,
+        "duration": 6106,
+        "pausedElapsed": 0
+      },
+      "s5": {
+        "start": null,
+        "end": null,
+        "duration": null,
+        "pausedElapsed": 0
+      }
+    },
+    "stationTimerStart": null,
+    "transitionStart": null,
+    "totalTime": 6106,
+    "updatedAt": 1794672507909
   }
 }

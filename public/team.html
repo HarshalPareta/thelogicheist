@@ -4,20 +4,32 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Logic Heist - Team Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Special+Elite&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/jpeg" href="/images/heist-logo.jpg">
 </head>
 <body>
+<canvas id="bgFx" aria-hidden="true"></canvas>
 
 <header>
-  <h1>The Logic Heist</h1>
-  <button class="btn secondary" id="leaveBtn" style="margin-left:auto; padding:8px 14px; font-size:0.85rem;">Leave / Change Team</button>
+  <img class="brand-logo" src="/images/heist-logo.jpg" alt="The Logic Heist logo">
+  <div class="brand">
+    <h1>The Logic Heist</h1>
+    <div class="tagline">Bella ciao, bella ciao.</div>
+  </div>
+  <div class="music-control">
+    <div class="music-bars" id="musicBars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <input class="music-volume" id="musicVolume" type="range" min="0" max="100" value="30" aria-label="Background music volume">
+    <button class="music-btn" id="musicBtn" type="button" aria-pressed="false">Music off</button>
+  </div>
+  <button class="btn secondary leave-btn" id="leaveBtn">Leave / Change Team</button>
 </header>
 
 <div id="teamView" class="screen active">
   <div class="card">
-    <h2>Station <span id="curStationLabel">1</span></h2>
-    <div id="stationChip" class="station-chip">1</div>
+    <h2 class="note mission-location" id="curStationLabel">The Professor’s Blackboard</h2>
 
     <!-- Timer views -->
     <div id="timerArea" style="display:none;">
@@ -31,18 +43,21 @@
 
     <!-- Station selection -->
     <div id="stationSelectArea" style="display:none; margin-top:18px;">
-      <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text); text-align:left;">Select your next assigned station</label>
+      <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text); text-align:left;">Select your next assigned location</label>
       <select id="nextStationSelect"></select>
-      <button class="btn" id="confirmStationBtn">Select Station</button>
+      <button class="btn" id="confirmStationBtn">Select Location</button>
     </div>
 
     <div style="margin-top:14px; font-size:0.85rem; color:var(--muted);">
-      Team: <span id="teamNameLabel">-</span> &bull; Completed: <span id="completedLabel">none</span>
+      Team: <span id="teamNameLabel">-</span> &bull; Completed locations: <span id="completedLabel">none</span>
     </div>
   </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/js/heist-background.js"></script>
+<script src="/js/station-names.js"></script>
+<script src="/js/heist-music.js"></script>
 <script>
   const STATION_COUNT = 5;
   const STATION_LIMIT_MS = 12 * 60 * 1000;
@@ -53,7 +68,6 @@
   let socket = io();
 
   const curStationLabel = document.getElementById('curStationLabel');
-  const stationChip = document.getElementById('stationChip');
   const timerArea = document.getElementById('timerArea');
   const timerDisplay = document.getElementById('timerDisplay');
   const timerLabel = document.getElementById('timerLabel');
@@ -82,7 +96,7 @@
     avail.forEach(s => {
       const o = document.createElement('option');
       o.value = s;
-      o.textContent = `Station ${s}`;
+      o.textContent = stationName(s);
       nextStationSelect.appendChild(o);
     });
   }
@@ -91,10 +105,10 @@
     const team = teams[myName];
     if (!team) return;
 
-    curStationLabel.textContent = team.currentStation;
-    stationChip.textContent = team.currentStation;
-    stationChip.className = 'station-chip' + (team.status === 'transition' ? ' transition' : '');
-    completedLabel.textContent = team.completedStations.length ? team.completedStations.join(', ') : 'none';
+    curStationLabel.textContent = stationName(team.currentStation);
+    completedLabel.textContent = team.completedStations.length
+      ? team.completedStations.map(stationName).join(', ')
+      : 'none';
 
     timerArea.style.display = 'none';
     startStationBtn.style.display = 'none';
@@ -103,7 +117,7 @@
 
     if (team.status === 'idle') {
       startStationBtn.style.display = 'block';
-      startStationBtn.textContent = 'Start Station Timer';
+      startStationBtn.textContent = 'Start Location Timer';
       startStationBtn.disabled = false;
     } else if (team.status === 'active') {
       timerArea.style.display = 'block';

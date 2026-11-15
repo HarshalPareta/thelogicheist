@@ -4,14 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Logic Heist - Admin Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Special+Elite&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/jpeg" href="/images/heist-logo.jpg">
 </head>
 <body>
+<canvas id="bgFx" aria-hidden="true"></canvas>
 
 <header>
-  <button class="close-admin" id="backBtn">&larr; Back</button>
-  <h1>The Logic Heist &mdash; Admin</h1>
+  <button class="close-admin" id="backBtn" style="position:static; margin-right:auto;">&larr; Back</button>
+  <img class="brand-logo" src="/images/heist-logo.jpg" alt="The Logic Heist logo">
+  <div class="brand">
+    <h1>The Logic Heist &mdash; Admin</h1>
+    <div class="tagline">Live team tracking &bull; Location times</div>
+  </div>
+  <div class="music-control">
+    <div class="music-bars" id="musicBars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <input class="music-volume" id="musicVolume" type="range" min="0" max="100" value="30" aria-label="Background music volume">
+    <button class="music-btn" id="musicBtn" type="button" aria-pressed="false">Music off</button>
+  </div>
 </header>
 
 <div id="adminLock" class="screen active">
@@ -29,7 +42,7 @@
     <div class="admin-header">
       <div>
         <h2>Live Team Tracking</h2>
-        <div style="font-size:0.85rem; color:var(--muted);">Station times &bull; Admin stop &bull; Excel export</div>
+        <div style="font-size:0.85rem; color:var(--muted);">Location times &bull; Admin stop &bull; Excel export</div>
       </div>
       <div class="admin-actions">
         <button class="btn" id="exportBtn">Export Excel</button>
@@ -41,17 +54,17 @@
         <thead>
           <tr>
             <th>Team</th>
-            <th>Start</th>
-            <th>Curr.</th>
+            <th>Start Location</th>
+            <th>Current Location</th>
             <th>Status</th>
-            <th>St 1</th>
-            <th>St 2</th>
-            <th>St 3</th>
-            <th>St 4</th>
-            <th>St 5</th>
+            <th>The Professor’s Blackboard</th>
+            <th>The Royal Mint Blueprint</th>
+            <th>The Rio Firewall</th>
+            <th>Inspector Murillo’s Tent</th>
+            <th>The Submerged Vault</th>
             <th>Total</th>
             <th>Action</th>
-            <th>Assign Station</th>
+            <th>Assign Location</th>
           </tr>
         </thead>
         <tbody id="adminSheetBody"></tbody>
@@ -63,6 +76,9 @@
 
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
+<script src="/js/heist-background.js"></script>
+<script src="/js/station-names.js"></script>
+<script src="/js/heist-music.js"></script>
 <script>
   const STATION_COUNT = 5;
   const STATION_LIMIT_MS = 12 * 60 * 1000;
@@ -150,7 +166,7 @@
       if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
       else if (team.status === 'paused') { statusClass = 'wait'; statusLabel = 'Paused'; }
       else if (team.status === 'transition') { statusClass = 'trans'; statusLabel = 'Transition'; }
-      else if (team.status === 'station_select') { statusClass = 'trans'; statusLabel = 'Selecting Station'; }
+      else if (team.status === 'station_select') { statusClass = 'trans'; statusLabel = 'Selecting Location'; }
       else if (team.status === 'finished') { statusClass = 'wait'; statusLabel = 'Finished'; }
 
       let actionHtml = '';
@@ -170,13 +186,13 @@
         actionHtml = `<span class="dash">-</span>`;
       }
 
-      const assignSelect = `<select class="assign-select" id="assign-${escapeHtml(team.name)}">${[1,2,3,4,5].map(n => `<option value="${n}" ${team.currentStation == n ? 'selected' : ''}>Station ${n}</option>`).join('')}</select>`;
+      const assignSelect = `<select class="assign-select" id="assign-${escapeHtml(team.name)}">${[1,2,3,4,5].map(n => `<option value="${n}" ${team.currentStation == n ? 'selected' : ''}>${stationName(n)}</option>`).join('')}</select>`;
       const assignBtn = authed ? `<button class="btn assign" onclick="appAssign('${escapeHtml(team.name)}', document.getElementById('assign-${escapeHtml(team.name)}').value)">Assign</button>` : '';
 
       tr.innerHTML = `
         <td class="team">${escapeHtml(team.name)}${team.status !== 'finished' && authed ? '<br><button class="btn start" style="font-size:0.75rem;padding:4px 6px;" onclick="appCompleteTeam(\'' + escapeHtml(team.name) + '\')">Mark Complete</button>' : ''}</td>
-        <td>${team.startStation}</td>
-        <td>${team.currentStation}</td>
+        <td>${stationName(team.startStation)}</td>
+        <td>${stationName(team.currentStation)}</td>
         <td class="${statusClass}">${statusLabel}</td>
         ${[1,2,3,4,5].map(n => `<td>${st(n)}</td>`).join('')}
         <td class="time-cell">${fmt(team.totalTime)}</td>
@@ -262,8 +278,8 @@
   document.getElementById('exportBtn').addEventListener('click', () => {
     const list = Object.values(teams);
     if (list.length === 0) { alert('No teams to export.'); return; }
-    const header = ['Team Name', 'Start Station', 'Current Station',
-      'St 1 Time', 'St 2 Time', 'St 3 Time', 'St 4 Time', 'St 5 Time',
+    const header = ['Team Name', 'Start Location', 'Current Location',
+      ...stationNames.slice(1),
       'St 1 Done', 'St 2 Done', 'St 3 Done', 'St 4 Done', 'St 5 Done',
       'Total Time (sec)', 'Final Score'];
     const headerRow = header.map(h => ({ t: 's', v: h, s: { font: { bold: true } } }));
@@ -271,8 +287,8 @@
     list.forEach(team => {
       const row = [
         { t: 's', v: team.name },
-        { t: 'n', v: team.startStation },
-        { t: 'n', v: team.currentStation }
+        { t: 's', v: stationName(team.startStation) },
+        { t: 's', v: stationName(team.currentStation) }
       ];
       for (let i = 1; i <= STATION_COUNT; i++) {
         const d = team.stationTimes[stationKey(i)];
@@ -290,7 +306,7 @@
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20, 12, 12, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 14, 14].map(w => ({ width: w }));
+    ws['!cols'] = [20, 30, 30, 32, 32, 24, 30, 26, 10, 10, 10, 10, 10, 14, 14].map(w => ({ width: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
     XLSX.writeFile(wb, 'logic-heist-times.xlsx');
