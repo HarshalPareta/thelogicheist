@@ -128,7 +128,12 @@
 
   function populateStationSelect(team) {
     nextStationSelect.innerHTML = '';
-    const avail = [...Array(STATION_COUNT).keys()].map(i => i + 1).filter(s => !team.completedStations.includes(s));
+    const avail = [...Array(STATION_COUNT).keys()].map(i => i + 1).filter(s => {
+      if (team.completedStations.includes(s)) return false;
+      const d = team.stationTimes[stationKey(s)];
+      if (d && d.start != null) return false;
+      return true;
+    });
     avail.forEach(s => {
       const o = document.createElement('option');
       o.value = s;
@@ -136,6 +141,8 @@
       nextStationSelect.appendChild(o);
     });
   }
+
+  let lastStatus = null;
 
   function render() {
     const team = teams[myName];
@@ -179,12 +186,16 @@
       timerDisplay.textContent = remaining <= 0 ? '00:00' : fmt(remaining);
     } else if (team.status === 'station_select') {
       stationSelectArea.style.display = 'block';
-      populateStationSelect(team);
+      if (lastStatus !== 'station_select') {
+        populateStationSelect(team);
+      }
     } else if (team.status === 'finished') {
       statusText.style.display = 'block';
       statusText.textContent = 'All stations complete — Heist finished!';
       statusText.className = 'status-text';
     }
+
+    lastStatus = team.status;
   }
 
   socket.on('state:init', (t) => { teams = t; render(); });

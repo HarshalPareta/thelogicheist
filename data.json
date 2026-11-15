@@ -1,53 +1,53 @@
 {
-  "p1": {
-    "name": "p1",
-    "startStation": 1,
+  "P1": {
+    "name": "P1",
+    "startStation": 2,
     "currentStation": 5,
     "status": "finished",
     "completedStations": [
       2,
-      3,
-      4
+      1,
+      5
     ],
     "completed": true,
     "stationTimes": {
       "s1": {
-        "start": 1794747334396,
-        "end": 1794747342765,
-        "duration": 8369,
-        "pausedElapsed": 0
+        "start": 1794759501102,
+        "end": 1794759505308,
+        "duration": 2847,
+        "pausedElapsed": 0,
+        "completed": true
       },
       "s2": {
-        "start": 1794747349820,
-        "end": 1794747353036,
-        "duration": 1632,
+        "start": 1794759283092,
+        "end": 1794759291858,
+        "duration": 6414,
         "pausedElapsed": 0,
         "completed": true
       },
       "s3": {
-        "start": 1794747359261,
-        "end": 1794747363710,
-        "duration": 4449,
-        "pausedElapsed": 0,
-        "completed": true
+        "start": 1794759514957,
+        "end": 1794759515485,
+        "duration": 528,
+        "pausedElapsed": 0
       },
       "s4": {
-        "start": 1794747370476,
-        "end": 1794747370476,
-        "duration": 0,
-        "pausedElapsed": 0,
-        "completed": true
+        "start": 1794759521653,
+        "end": 1794759522822,
+        "duration": 1169,
+        "pausedElapsed": 0
       },
       "s5": {
-        "start": 1794747375652,
-        "end": 1794747378173,
-        "duration": 2521,
-        "pausedElapsed": 0
+        "start": 1794759527309,
+        "end": 1794759529373,
+        "duration": 703,
+        "pausedElapsed": 0,
+        "completed": true
       }
     },
     "stationTimerStart": null,
     "transitionStart": null,
-    "totalTime": 16971,
-    "updatedAt": 1794747383405
+    "totalTime": 11661,
+    "updatedAt": 1794759534883
   }
 }

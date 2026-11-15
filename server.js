@@ -264,6 +264,8 @@ function selectStation(team, station) {
   station = parseInt(station, 10);
   if (station < 1 || station > STATION_COUNT) return false;
   if (team.completedStations.includes(station)) return false;
+  const existing = team.stationTimes[stationKey(station)];
+  if (existing && existing.start != null) return false;
   team.currentStation = station;
   team.status = 'idle';
   team.updatedAt = now();
