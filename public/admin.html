@@ -184,19 +184,19 @@
       const st = (n) => {
         const d = team.stationTimes[stationKey(n)];
         const isCompleted = team.completedStations.includes(n);
-        const isCurrentStation = team.currentStation === n;
-        const timerRunningOnThisStation = team.status === 'active' && isCurrentStation && team.stationTimerStart;
+        const isHintUsed = team.hintsUsed.includes(n);
+        const timerRunningOnThisStation = team.status === 'active' && team.currentStation === n && team.stationTimerStart;
         const timeStr = d && d.duration != null ? fmt(d.duration) : '--:--';
+        const penaltyBtn = authed && !isHintUsed
+          ? `<div style="margin-top:2px;"><button class="btn penalty" style="font-size:0.65rem;padding:3px 6px;" onclick="appPenalty('${escapeHtml(team.name)}', ${n})" title="Apply 60s penalty to Station ${n}">Penalty +60s</button></div>`
+          : '';
         if (isCompleted) {
-          return `<span class="checkmark done" title="Completed">${timeStr} <span class="check-icon">&#10003;</span></span>`;
-        }
-        if (!isCurrentStation) {
-          return `<span class="checkmark disabled" title="Only current station can be completed">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
+          return `<span class="checkmark done" onclick="appMarkStationComplete('${escapeHtml(team.name)}', ${n})" title="Click to unmark Station ${n}">${timeStr} <span class="check-icon">&#10003;</span> ${isHintUsed ? '<span class="hint-badge">Penalty Applied</span>' : ''}</span>${penaltyBtn}`;
         }
         if (timerRunningOnThisStation) {
-          return `<span class="checkmark running" title="Timer is running — stop it first">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
+          return `<span class="checkmark running" onclick="appMarkStationComplete('${escapeHtml(team.name)}', ${n})" title="Click to mark Station ${n} as completed">${timeStr} <span class="check-icon empty">&#10003;</span> ${isHintUsed ? '<span class="hint-badge">Penalty Applied</span>' : ''}</span>${penaltyBtn}`;
         }
-        return `<span class="checkmark pending" onclick="appMarkStationComplete('${escapeHtml(team.name)}', ${n})" title="Mark Station ${n} as completed">${timeStr} <span class="check-icon empty">&#10003;</span></span>`;
+        return `<span class="checkmark pending" onclick="appMarkStationComplete('${escapeHtml(team.name)}', ${n})" title="Click to mark Station ${n} as completed">${timeStr} <span class="check-icon empty">&#10003;</span> ${isHintUsed ? '<span class="hint-badge">Penalty Applied</span>' : ''}</span>${penaltyBtn}`;
       };
       let statusClass = 'wait', statusLabel = 'Idle';
       if (team.status === 'active') { statusClass = 'active'; statusLabel = 'Active'; }
@@ -209,13 +209,10 @@
       if (team.status === 'active' && authed) {
         actionHtml = `<button class="btn pause" onclick="appPause('${escapeHtml(team.name)}')">Pause</button>`;
         actionHtml += `<button class="btn stop" onclick="appStop('${escapeHtml(team.name)}')">Stop</button>`;
-        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'paused' && authed) {
         actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Resume</button>`;
-        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'idle' && authed) {
         actionHtml = `<button class="btn start" onclick="appStart('${escapeHtml(team.name)}')">Start</button>`;
-        actionHtml += `<button class="btn complete" onclick="appComplete('${escapeHtml(team.name)}')">Complete Station</button>`;
       } else if (team.status === 'transition' && authed) {
         actionHtml = `<button class="btn skip" onclick="appSkip('${escapeHtml(team.name)}')">Skip Transition</button>`;
       } else {
@@ -264,12 +261,6 @@
     socket.emit('admin:assign_station', { name: teamName, station: station });
   };
 
-  window.appComplete = function(teamName) {
-    if (!authed) return;
-    if (!confirm('Mark this station as completed for ' + teamName + '?')) return;
-    socket.emit('admin:complete_station', { name: teamName });
-  };
-
   window.appMarkStationComplete = function(teamName, station) {
     if (!authed) return;
     socket.emit('admin:mark_station_complete', { name: teamName, station: station });
@@ -279,6 +270,12 @@
     if (!authed) return;
     if (!confirm('WARNING: This will delete ALL team data and cannot be undone. Continue?')) return;
     socket.emit('admin:clear');
+  };
+
+  window.appPenalty = function(teamName, station) {
+    if (!authed) return;
+    if (!confirm('Apply 60-second penalty to Station ' + station + ' for ' + teamName + '?')) return;
+    socket.emit('admin:hint', { name: teamName, station: station });
   };
 
   window.appCompleteTeam = function(teamName) {
@@ -317,6 +314,7 @@
     const header = ['Team Name', 'Start Location', 'Current Location',
       ...stationNames.slice(1),
       'St 1 Done', 'St 2 Done', 'St 3 Done', 'St 4 Done', 'St 5 Done',
+      'St 1 Hint', 'St 2 Hint', 'St 3 Hint', 'St 4 Hint', 'St 5 Hint',
       'Total Time (sec)', 'Final Score'];
     const headerRow = header.map(h => ({ t: 's', v: h, s: { font: { bold: true } } }));
     const rows = [headerRow];
@@ -335,6 +333,10 @@
         const isCompleted = team.completedStations.includes(i);
         row.push({ t: 'n', v: isCompleted ? 1 : 0 });
       }
+      for (let i = 1; i <= STATION_COUNT; i++) {
+        const isHintUsed = team.hintsUsed.includes(i);
+        row.push({ t: 'n', v: isHintUsed ? 1 : 0 });
+      }
       const totalSec = Math.floor(
         [1,2,3,4,5].reduce((sum, i) => {
           const d = team.stationTimes[stationKey(i)];
@@ -345,11 +347,11 @@
       const lastRow = rows.length + 1;
       const completedCount = [1,2,3,4,5].filter(i => team.completedStations.includes(i)).length;
       const calcScore = completedCount * 1000 - totalSec;
-      row.push({ t: 'f', f: `=SUMPRODUCT(--(I${lastRow}:M${lastRow}=1))*1000 - N${lastRow}`, v: calcScore });
+      row.push({ t: 'f', f: `=SUMPRODUCT(--(I${lastRow}:M${lastRow}=1))*1000 - S${lastRow}`, v: calcScore });
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20, 30, 30, 32, 32, 24, 30, 26, 10, 10, 10, 10, 10, 14, 14].map(w => ({ width: w }));
+    ws['!cols'] = [20, 30, 30, 22, 22, 22, 22, 22, 8, 8, 8, 8, 8, 8, 8, 14, 14].map(w => ({ width: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Logic Heist Times');
     XLSX.writeFile(wb, 'logic-heist-times.xlsx');

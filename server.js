@@ -14,6 +14,7 @@ const STATION_COUNT = 5;
 const STATION_LIMIT_MS = 12 * 60 * 1000;
 const TRANSITION_LIMIT_MS = 2 * 60 * 1000;
 const ADMIN_PASSWORD = 'Harshal@148';
+const HINT_PENALTY_MS = 60 * 1000;
 
 let teams = {};
 let tickTimer = null;
@@ -45,6 +46,7 @@ function makeTeam(name, startStation) {
     status: 'idle',
     completedStations: [],
     completed: false,
+    hintsUsed: [],
     stationTimes: s,
     stationTimerStart: null,
     transitionStart: null,
@@ -80,16 +82,22 @@ function stopTick() {
 
 function completeStation(team, endTime) {
   const cs = team.currentStation;
-  const start = team.stationTimerStart || endTime - STATION_LIMIT_MS;
-  const end = endTime;
-  const duration = end - start;
-  team.stationTimes[stationKey(cs)] = { start, end, duration, pausedElapsed: 0 };
+  const existing = team.stationTimes[stationKey(cs)];
+  let duration;
+  if (existing && existing.duration != null) {
+    duration = existing.duration;
+  } else if (team.stationTimerStart) {
+    duration = endTime - team.stationTimerStart;
+  } else {
+    duration = STATION_LIMIT_MS;
+  }
+  team.stationTimes[stationKey(cs)] = { start: existing && existing.start ? existing.start : endTime - duration, end: endTime, duration, pausedElapsed: 0 };
   team.totalTime += duration;
   team.stationTimerStart = null;
   team.completedStations = team.completedStations.filter(s => s !== cs);
   team.status = 'transition';
-  team.transitionStart = end;
-  team.updatedAt = end;
+  team.transitionStart = endTime;
+  team.updatedAt = endTime;
 }
 
 function endTransition(team) {
@@ -147,56 +155,33 @@ function stopStationTimerByAdmin(team) {
   return true;
 }
 
-function adminCompleteStation(team) {
-  const cs = team.currentStation;
-  const endTime = now();
-  let duration = 0;
-  const existing = team.stationTimes[stationKey(cs)];
-
-  if (existing && existing.duration != null) {
-    duration = existing.duration;
-  } else if (team.status === 'active' && team.stationTimerStart) {
-    duration = endTime - team.stationTimerStart;
-  } else if (team.status === 'paused') {
-    duration = (existing && existing.pausedElapsed) || 0;
-  }
-
-  team.stationTimes[stationKey(cs)] = {
-    start: existing && existing.start ? existing.start : endTime - duration,
-    end: endTime,
-    duration: duration,
-    pausedElapsed: 0,
-    completed: true
-  };
-  team.totalTime += duration;
-  team.stationTimerStart = null;
-  team.transitionStart = null;
-
-  if (!team.completedStations.includes(cs)) {
-    team.completedStations.push(cs);
-  }
-
-  team.status = 'station_select';
-  team.updatedAt = endTime;
-  saveState();
-  return true;
-}
-
 function markStationCompleteByAdmin(team, stationNumber) {
   stationNumber = parseInt(stationNumber, 10);
   if (stationNumber < 1 || stationNumber > STATION_COUNT) return false;
 
-  // Can only mark the current station as completed
-  if (team.currentStation !== stationNumber) {
-    return false;
-  }
-
-  // Cannot mark a station completed while its timer is actively running
-  if (team.status === 'active' && team.currentStation === stationNumber && team.stationTimerStart) {
-    return false;
-  }
-
   const key = stationKey(stationNumber);
+  const isCompleted = team.completedStations.includes(stationNumber);
+
+  if (isCompleted) {
+    // Unmark: remove completed status but keep the time
+    team.completedStations = team.completedStations.filter(s => s !== stationNumber);
+    const existing = team.stationTimes[key];
+    if (existing) {
+      existing.completed = false;
+      // Keep duration and end as-is so time is retained
+    }
+    team.totalTime = 0;
+    for (let i = 1; i <= STATION_COUNT; i++) {
+      const d = team.stationTimes[stationKey(i)];
+      if (d && d.duration != null) team.totalTime += d.duration;
+    }
+    if (team.status === 'finished') team.status = 'idle';
+    team.updatedAt = now();
+    saveState();
+    return true;
+  }
+
+  // Mark as completed - admin can mark any station at any time
   const endTime = now();
   const existing = team.stationTimes[key];
   let duration = 0;
@@ -229,6 +214,51 @@ function markStationCompleteByAdmin(team, stationNumber) {
 
   if (team.completedStations.length >= STATION_COUNT) {
     team.status = 'finished';
+  }
+
+  team.updatedAt = endTime;
+  saveState();
+  return true;
+}
+
+function applyHintPenalty(team, stationNumber) {
+  stationNumber = parseInt(stationNumber, 10);
+  if (stationNumber < 1 || stationNumber > STATION_COUNT) return false;
+
+  // Cannot apply penalty twice to the same station
+  if (team.hintsUsed.includes(stationNumber)) return false;
+
+  const key = stationKey(stationNumber);
+  const endTime = now();
+
+  if (!team.stationTimes[key]) {
+    team.stationTimes[key] = { start: null, end: null, duration: null, pausedElapsed: 0, penaltyMs: 0 };
+  }
+  const existing = team.stationTimes[key];
+
+  if (team.status === 'active' && team.currentStation === stationNumber && team.stationTimerStart) {
+    // Adjust stationTimerStart backwards so countdown immediately shows less time
+    // Cap at 1 second remaining to avoid immediate auto-completion
+    const newStart = team.stationTimerStart - HINT_PENALTY_MS;
+    const minStart = endTime - STATION_LIMIT_MS + 1000;
+    team.stationTimerStart = Math.max(newStart, minStart);
+  } else if (team.status === 'paused' && team.currentStation === stationNumber) {
+    existing.pausedElapsed = (existing.pausedElapsed || 0) + HINT_PENALTY_MS;
+  } else {
+    // Not running - apply 60s penalty as duration
+    existing.duration = (existing.duration || 0) + HINT_PENALTY_MS;
+    existing.end = endTime;
+    if (!existing.start) existing.start = endTime - existing.duration;
+  }
+
+  if (!team.hintsUsed.includes(stationNumber)) {
+    team.hintsUsed.push(stationNumber);
+  }
+
+  team.totalTime = 0;
+  for (let i = 1; i <= STATION_COUNT; i++) {
+    const d = team.stationTimes[stationKey(i)];
+    if (d && d.duration != null) team.totalTime += d.duration;
   }
 
   team.updatedAt = endTime;
@@ -343,20 +373,20 @@ io.on('connection', (socket) => {
     io.to('team:' + name).emit('state:update', teams);
   });
 
-  socket.on('admin:complete_station', ({ name }) => {
-    if (!adminSockets.has(socket.id)) return;
-    const team = teams[name];
-    if (!team) return;
-    adminCompleteStation(team);
-    broadcast();
-    io.to('team:' + name).emit('state:update', teams);
-  });
-
   socket.on('admin:mark_station_complete', ({ name, station }) => {
     if (!adminSockets.has(socket.id)) return;
     const team = teams[name];
     if (!team) return;
     markStationCompleteByAdmin(team, station);
+    broadcast();
+    io.to('team:' + name).emit('state:update', teams);
+  });
+
+  socket.on('admin:hint', ({ name, station }) => {
+    if (!adminSockets.has(socket.id)) return;
+    const team = teams[name];
+    if (!team) return;
+    applyHintPenalty(team, station);
     broadcast();
     io.to('team:' + name).emit('state:update', teams);
   });
