@@ -281,6 +281,7 @@ function assignStation(team, station) {
   team.currentStation = station;
   team.stationTimes[stationKey(station)] = { start: null, end: null, duration: null, pausedElapsed: 0 };
   team.completedStations = team.completedStations.filter(s => s !== station);
+  team.hintsUsed = team.hintsUsed.filter(s => s !== station);
   team.status = 'idle';
   team.stationTimerStart = null;
   team.transitionStart = null;
